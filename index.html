@@ -54,11 +54,18 @@
       max-width: 500px;
       margin: 20px auto;
       padding: 20px;
-      background: #e8f5e9;
       border-radius: 10px;
-      font-size: 22px;
+      font-size: 20px;
       font-weight: bold;
       display: none;
+    }
+
+    .success {
+      background: #e8f5e9;
+    }
+
+    .error {
+      background: #ffebee;
     }
 
   </style>
@@ -81,6 +88,14 @@
 
   <script>
 
+    // ==========================================
+    // GOOGLE APPS SCRIPT BACKEND
+    // ==========================================
+
+    const BACKEND_URL =
+      "https://script.google.com/macros/s/AKfycby0nWs74BGWar6ciECXmoID5SCIDanEf2EyQCd4Fevun1SGduKE14kSu38gxZguN9BnGQ/exec";
+
+
     const status =
       document.getElementById("status");
 
@@ -90,11 +105,11 @@
 
     let scanner = null;
 
-    let scanFinished = false;
+    let scanLocked = false;
 
 
     // ==========================================
-    // START QR SCANNER
+    // START SCANNER
     // ==========================================
 
     async function startScanner() {
@@ -132,10 +147,6 @@
         };
 
 
-        // ======================================
-        // START BACK CAMERA
-        // ======================================
-
         await scanner.start(
 
           {
@@ -144,48 +155,59 @@
 
           config,
 
-          function(decodedText) {
 
-            if (scanFinished) {
+          // ======================================
+          // QR FOUND
+          // ======================================
+
+          async function(decodedText) {
+
+            if (scanLocked) {
               return;
             }
 
 
-            scanFinished = true;
+            scanLocked = true;
 
 
             status.innerHTML =
-              "✅ QR detected successfully!";
+              "🎯 QR detected!<br>" +
+              "⏳ Sending attendance...";
 
 
-            resultBox.style.display =
-              "block";
+            // ====================================
+            // STOP SCANNER
+            // ====================================
+
+            try {
+
+              await scanner.stop();
+
+            } catch (e) {
+
+              console.log(e);
+
+            }
 
 
-            resultBox.innerHTML =
-              "QR CONTENT:<br><br>" +
-              decodedText;
+            // ====================================
+            // SEND TO GOOGLE APPS SCRIPT
+            // ====================================
 
-
-            // Stop after successful scan
-
-            scanner
-              .stop()
-              .catch(function(error) {
-
-                console.log(
-                  "Stop error:",
-                  error
-                );
-
-              });
+            sendAttendance(
+              decodedText
+            );
 
           },
 
 
+          // ======================================
+          // NORMAL SCAN ERRORS
+          // ======================================
+
           function(errorMessage) {
 
-            // Normal scanning errors are ignored.
+            // Ignore normal scanning errors.
 
           }
 
@@ -208,6 +230,138 @@
         console.log(error);
 
       }
+
+    }
+
+
+    // ==========================================
+    // SEND ATTENDANCE
+    // ==========================================
+
+    function sendAttendance(personId) {
+
+      const callbackName =
+        "attendanceCallback_" +
+        Date.now();
+
+
+      window[callbackName] =
+        function(response) {
+
+          try {
+
+            delete window[callbackName];
+
+          } catch (e) {}
+
+
+          if (
+            response &&
+            response.success
+          ) {
+
+            resultBox.style.display =
+              "block";
+
+            resultBox.className =
+              "success";
+
+
+            resultBox.innerHTML =
+              "✅ Attendance Recorded!<br><br>" +
+              "Name: " +
+              response.name +
+              "<br>" +
+              "ID: " +
+              response.id +
+              "<br>" +
+              "Time: " +
+              response.time;
+
+
+            status.innerHTML =
+              "✅ Done";
+
+
+          } else {
+
+            resultBox.style.display =
+              "block";
+
+            resultBox.className =
+              "error";
+
+
+            resultBox.innerHTML =
+              "❌ " +
+              (
+                response &&
+                response.message
+                  ? response.message
+                  : "Unknown error"
+              );
+
+
+            status.innerHTML =
+              "⚠️ Attendance was not recorded.";
+
+          }
+
+
+          // Remove script tag
+
+          if (scriptTag) {
+
+            scriptTag.remove();
+
+          }
+
+        };
+
+
+      const url =
+        BACKEND_URL +
+        "?action=record" +
+        "&id=" +
+        encodeURIComponent(personId) +
+        "&callback=" +
+        encodeURIComponent(callbackName);
+
+
+      const scriptTag =
+        document.createElement("script");
+
+
+      scriptTag.src =
+        url;
+
+
+      scriptTag.onerror =
+        function() {
+
+          resultBox.style.display =
+            "block";
+
+          resultBox.className =
+            "error";
+
+
+          resultBox.innerHTML =
+            "❌ Could not connect to server.";
+
+
+          status.innerHTML =
+            "⚠️ Connection error.";
+
+
+          scanLocked = false;
+
+        };
+
+
+      document.body.appendChild(
+        scriptTag
+      );
 
     }
 
