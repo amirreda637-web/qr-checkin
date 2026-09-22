@@ -21,14 +21,14 @@
 
     body {
       margin: 0;
-      padding: 20px;
+      padding: 15px;
       font-family: Arial, sans-serif;
       text-align: center;
       background: #f2f2f2;
     }
 
     h1 {
-      margin-bottom: 20px;
+      margin: 10px 0 15px;
     }
 
     #reader {
@@ -42,20 +42,20 @@
 
     #status {
       max-width: 500px;
-      margin: 20px auto;
-      padding: 15px;
+      margin: 15px auto;
+      padding: 12px;
       background: white;
       border-radius: 10px;
-      font-size: 18px;
-      line-height: 1.6;
+      font-size: 17px;
+      line-height: 1.5;
     }
 
     #result {
       max-width: 500px;
-      margin: 20px auto;
-      padding: 20px;
+      margin: 15px auto;
+      padding: 18px;
       border-radius: 10px;
-      font-size: 20px;
+      font-size: 19px;
       font-weight: bold;
       display: none;
     }
@@ -66,6 +66,10 @@
 
     .error {
       background: #ffebee;
+    }
+
+    .waiting {
+      background: #fff8e1;
     }
 
   </style>
@@ -80,7 +84,7 @@
   <div id="reader"></div>
 
   <div id="status">
-    ⏳ Starting QR scanner...
+    ⏳ Starting camera...
   </div>
 
   <div id="result"></div>
@@ -89,12 +93,16 @@
   <script>
 
     // ==========================================
-    // GOOGLE APPS SCRIPT BACKEND
+    // BACKEND URL
     // ==========================================
 
     const BACKEND_URL =
       "https://script.google.com/macros/s/AKfycby0nWs74BGWar6ciECXmoID5SCIDanEf2EyQCd4Fevun1SGduKE14kSu38gxZguN9BnGQ/exec";
 
+
+    // ==========================================
+    // ELEMENTS
+    // ==========================================
 
     const status =
       document.getElementById("status");
@@ -103,9 +111,19 @@
       document.getElementById("result");
 
 
+    // ==========================================
+    // VARIABLES
+    // ==========================================
+
     let scanner = null;
 
-    let scanLocked = false;
+    let scannerRunning = false;
+
+    let processing = false;
+
+    let lastScannedId = "";
+
+    let lastScanTime = 0;
 
 
     // ==========================================
@@ -114,37 +132,36 @@
 
     async function startScanner() {
 
+      if (scannerRunning) {
+        return;
+      }
+
+
       try {
 
+        if (!scanner) {
+
+          scanner =
+            new Html5Qrcode(
+              "reader",
+              {
+                verbose: false,
+
+                formatsToSupport: [
+
+                  Html5QrcodeSupportedFormats.QR_CODE
+
+                ]
+
+              }
+            );
+
+        }
+
+
         status.innerHTML =
-          "⏳ Opening rear camera...";
-
-
-        scanner =
-          new Html5Qrcode(
-            "reader",
-            {
-              verbose: false,
-
-              formatsToSupport: [
-                Html5QrcodeSupportedFormats.QR_CODE
-              ]
-            }
-          );
-
-
-        const config = {
-
-          fps: 10,
-
-          qrbox: {
-            width: 280,
-            height: 280
-          },
-
-          aspectRatio: 1.7777778
-
-        };
+          "📷 Camera ready.<br>" +
+          "🔍 Scan QR code";
 
 
         await scanner.start(
@@ -153,57 +170,34 @@
             facingMode: "environment"
           },
 
-          config,
+          {
 
+            fps: 10,
 
-          // ======================================
-          // QR FOUND
-          // ======================================
+            qrbox: {
+              width: 280,
+              height: 280
+            },
 
-          async function(decodedText) {
-
-            if (scanLocked) {
-              return;
-            }
-
-
-            scanLocked = true;
-
-
-            status.innerHTML =
-              "🎯 QR detected!<br>" +
-              "⏳ Sending attendance...";
-
-
-            // ====================================
-            // STOP SCANNER
-            // ====================================
-
-            try {
-
-              await scanner.stop();
-
-            } catch (e) {
-
-              console.log(e);
-
-            }
-
-
-            // ====================================
-            // SEND TO GOOGLE APPS SCRIPT
-            // ====================================
-
-            sendAttendance(
-              decodedText
-            );
+            aspectRatio: 1.7777778
 
           },
 
 
-          // ======================================
+          // ====================================
+          // QR DETECTED
+          // ====================================
+
+          function(decodedText) {
+
+            handleScan(decodedText);
+
+          },
+
+
+          // ====================================
           // NORMAL SCAN ERRORS
-          // ======================================
+          // ====================================
 
           function(errorMessage) {
 
@@ -214,12 +208,18 @@
         );
 
 
+        scannerRunning = true;
+
+
         status.innerHTML =
-          "📷 Camera is working.<br>" +
-          "🔍 Point the camera at the QR code.";
+          "📷 Camera ready.<br>" +
+          "🔍 Scan QR code";
 
 
       } catch (error) {
+
+        scannerRunning = false;
+
 
         status.innerHTML =
           "❌ Scanner Error<br><br>" +
@@ -227,9 +227,101 @@
           "<br>" +
           error.message;
 
+
         console.log(error);
 
       }
+
+    }
+
+
+    // ==========================================
+    // HANDLE SCAN
+    // ==========================================
+
+    async function handleScan(decodedText) {
+
+      const personId =
+        String(decodedText).trim();
+
+
+      if (!personId) {
+        return;
+      }
+
+
+      // ========================================
+      // BLOCK MULTIPLE READS
+      // ========================================
+
+      if (processing) {
+        return;
+      }
+
+
+      const now =
+        Date.now();
+
+
+      if (
+        personId === lastScannedId &&
+        now - lastScanTime < 3000
+      ) {
+
+        return;
+
+      }
+
+
+      processing = true;
+
+      lastScannedId =
+        personId;
+
+      lastScanTime =
+        now;
+
+
+      // ========================================
+      // SHOW STATUS
+      // ========================================
+
+      status.innerHTML =
+        "🎯 QR detected!<br>" +
+        "⏳ Recording attendance...";
+
+
+      resultBox.style.display =
+        "none";
+
+
+      // ========================================
+      // STOP DECODING
+      // ========================================
+
+      try {
+
+        await scanner.stop();
+
+        scannerRunning = false;
+
+      } catch (error) {
+
+        console.log(
+          "Scanner stop:",
+          error
+        );
+
+      }
+
+
+      // ========================================
+      // SEND TO BACKEND
+      // ========================================
+
+      sendAttendance(
+        personId
+      );
 
     }
 
@@ -241,12 +333,24 @@
     function sendAttendance(personId) {
 
       const callbackName =
-        "attendanceCallback_" +
+        "attendance_" +
         Date.now();
+
+
+      let finished =
+        false;
 
 
       window[callbackName] =
         function(response) {
+
+          if (finished) {
+            return;
+          }
+
+
+          finished = true;
+
 
           try {
 
@@ -254,6 +358,10 @@
 
           } catch (e) {}
 
+
+          // ====================================
+          // SUCCESS
+          // ====================================
 
           if (
             response &&
@@ -268,12 +376,9 @@
 
 
             resultBox.innerHTML =
-              "✅ Attendance Recorded!<br><br>" +
+              "✅ Attendance Recorded<br><br>" +
               "Name: " +
               response.name +
-              "<br>" +
-              "ID: " +
-              response.id +
               "<br>" +
               "Time: " +
               response.time;
@@ -283,7 +388,14 @@
               "✅ Done";
 
 
-          } else {
+          }
+
+
+          // ====================================
+          // ERROR
+          // ====================================
+
+          else {
 
             resultBox.style.display =
               "block";
@@ -293,28 +405,46 @@
 
 
             resultBox.innerHTML =
-              "❌ " +
+              "⚠️ " +
               (
                 response &&
                 response.message
                   ? response.message
-                  : "Unknown error"
+                  : "Attendance was not recorded"
               );
 
 
             status.innerHTML =
-              "⚠️ Attendance was not recorded.";
+              "Ready for next scan.";
 
           }
 
 
-          // Remove script tag
+          // ====================================
+          // CLEAN SCRIPT
+          // ====================================
 
           if (scriptTag) {
 
             scriptTag.remove();
 
           }
+
+
+          // ====================================
+          // RESTART SCANNER
+          // ====================================
+
+          setTimeout(
+            function() {
+
+              processing = false;
+
+              startScanner();
+
+            },
+            700
+          );
 
         };
 
@@ -336,8 +466,20 @@
         url;
 
 
+      // ========================================
+      // CONNECTION ERROR
+      // ========================================
+
       scriptTag.onerror =
         function() {
+
+          if (finished) {
+            return;
+          }
+
+
+          finished = true;
+
 
           resultBox.style.display =
             "block";
@@ -347,14 +489,34 @@
 
 
           resultBox.innerHTML =
-            "❌ Could not connect to server.";
+            "❌ Server connection error";
 
 
           status.innerHTML =
-            "⚠️ Connection error.";
+            "⚠️ Try scanning again.";
 
 
-          scanLocked = false;
+          processing = false;
+
+
+          try {
+
+            delete window[callbackName];
+
+          } catch (e) {}
+
+
+          scriptTag.remove();
+
+
+          setTimeout(
+            function() {
+
+              startScanner();
+
+            },
+            700
+          );
 
         };
 
@@ -367,7 +529,7 @@
 
 
     // ==========================================
-    // START AFTER PAGE LOAD
+    // START
     // ==========================================
 
     window.addEventListener(
