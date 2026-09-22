@@ -2,6 +2,7 @@
 <html lang="en">
 
 <head>
+
   <meta charset="UTF-8">
 
   <meta
@@ -10,7 +11,14 @@
 
   <title>QR Check-in</title>
 
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
   <style>
+
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       margin: 0;
       padding: 20px;
@@ -23,107 +31,199 @@
       margin-bottom: 20px;
     }
 
-    #camera {
+    #reader {
       width: 100%;
       max-width: 500px;
-      background: #000;
+      margin: auto;
+      background: black;
       border-radius: 15px;
-    }
-
-    button {
-      margin-top: 20px;
-      padding: 15px 25px;
-      font-size: 18px;
-      border: none;
-      border-radius: 10px;
-      cursor: pointer;
+      overflow: hidden;
     }
 
     #status {
-      margin: 20px auto;
       max-width: 500px;
+      margin: 20px auto;
       padding: 15px;
       background: white;
       border-radius: 10px;
       font-size: 18px;
+      line-height: 1.6;
     }
+
+    #result {
+      max-width: 500px;
+      margin: 20px auto;
+      padding: 20px;
+      background: #e8f5e9;
+      border-radius: 10px;
+      font-size: 22px;
+      font-weight: bold;
+      display: none;
+    }
+
   </style>
+
 </head>
+
 
 <body>
 
   <h1>QR Check-in</h1>
 
-  <video
-    id="camera"
-    autoplay
-    playsinline>
-  </video>
-
-  <br>
-
-  <button onclick="startCamera()">
-    Start Camera
-  </button>
+  <div id="reader"></div>
 
   <div id="status">
-    Camera is not started.
+    ⏳ Starting QR scanner...
   </div>
+
+  <div id="result"></div>
 
 
   <script>
 
-    const video =
-      document.getElementById("camera");
-
     const status =
       document.getElementById("status");
 
+    const resultBox =
+      document.getElementById("result");
 
-    async function startCamera() {
 
-      status.innerHTML =
-        "⏳ Starting camera...";
+    let scanner = null;
 
+    let scanFinished = false;
+
+
+    // ==========================================
+    // START QR SCANNER
+    // ==========================================
+
+    async function startScanner() {
 
       try {
 
-        const stream =
-          await navigator.mediaDevices.getUserMedia({
-
-            video: {
-              facingMode: {
-                ideal: "environment"
-              }
-            },
-
-            audio: false
-
-          });
+        status.innerHTML =
+          "⏳ Opening rear camera...";
 
 
-        video.srcObject =
-          stream;
+        scanner =
+          new Html5Qrcode(
+            "reader",
+            {
+              verbose: false,
+
+              formatsToSupport: [
+                Html5QrcodeSupportedFormats.QR_CODE
+              ]
+            }
+          );
 
 
-        await video.play();
+        const config = {
+
+          fps: 10,
+
+          qrbox: {
+            width: 280,
+            height: 280
+          },
+
+          aspectRatio: 1.7777778
+
+        };
+
+
+        // ======================================
+        // START BACK CAMERA
+        // ======================================
+
+        await scanner.start(
+
+          {
+            facingMode: "environment"
+          },
+
+          config,
+
+          function(decodedText) {
+
+            if (scanFinished) {
+              return;
+            }
+
+
+            scanFinished = true;
+
+
+            status.innerHTML =
+              "✅ QR detected successfully!";
+
+
+            resultBox.style.display =
+              "block";
+
+
+            resultBox.innerHTML =
+              "QR CONTENT:<br><br>" +
+              decodedText;
+
+
+            // Stop after successful scan
+
+            scanner
+              .stop()
+              .catch(function(error) {
+
+                console.log(
+                  "Stop error:",
+                  error
+                );
+
+              });
+
+          },
+
+
+          function(errorMessage) {
+
+            // Normal scanning errors are ignored.
+
+          }
+
+        );
 
 
         status.innerHTML =
-          "✅ Camera is working!";
+          "📷 Camera is working.<br>" +
+          "🔍 Point the camera at the QR code.";
 
 
       } catch (error) {
 
         status.innerHTML =
-          "❌ Camera Error:<br><br>" +
+          "❌ Scanner Error<br><br>" +
           error.name +
           "<br>" +
           error.message;
 
+        console.log(error);
+
       }
 
     }
+
+
+    // ==========================================
+    // START AFTER PAGE LOAD
+    // ==========================================
+
+    window.addEventListener(
+      "load",
+      function() {
+
+        startScanner();
+
+      }
+    );
 
   </script>
 
