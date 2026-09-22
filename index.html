@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0">
+
+  <title>QR Check-in</title>
+
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: #f2f2f2;
+    }
+
+    h1 {
+      margin-bottom: 20px;
+    }
+
+    #camera {
+      width: 100%;
+      max-width: 500px;
+      background: #000;
+      border-radius: 15px;
+    }
+
+    button {
+      margin-top: 20px;
+      padding: 15px 25px;
+      font-size: 18px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+
+    #status {
+      margin: 20px auto;
+      max-width: 500px;
+      padding: 15px;
+      background: white;
+      border-radius: 10px;
+      font-size: 18px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>QR Check-in</h1>
+
+  <video
+    id="camera"
+    autoplay
+    playsinline>
+  </video>
+
+  <br>
+
+  <button onclick="startCamera()">
+    Start Camera
+  </button>
+
+  <div id="status">
+    Camera is not started.
+  </div>
+
+
+  <script>
+
+    const video =
+      document.getElementById("camera");
+
+    const status =
+      document.getElementById("status");
+
+
+    async function startCamera() {
+
+      status.innerHTML =
+        "⏳ Starting camera...";
+
+
+      try {
+
+        const stream =
+          await navigator.mediaDevices.getUserMedia({
+
+            video: {
+              facingMode: {
+                ideal: "environment"
+              }
+            },
+
+            audio: false
+
+          });
+
+
+        video.srcObject =
+          stream;
+
+
+        await video.play();
+
+
+        status.innerHTML =
+          "✅ Camera is working!";
+
+
+      } catch (error) {
+
+        status.innerHTML =
+          "❌ Camera Error:<br><br>" +
+          error.name +
+          "<br>" +
+          error.message;
+
+      }
+
+    }
+
+  </script>
+
+</body>
+
+</html>
